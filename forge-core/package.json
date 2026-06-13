@@ -1,0 +1,32 @@
+{
+  "name": "@cubiczan/forge-core",
+  "version": "0.1.0",
+  "description": "Shared plumbing for Atlassian Forge apps: fail-closed HMAC webhook verification, a webhook handler factory, a proxy -> cache(TTL) -> mock resolver helper, and response helpers. Extracted from the decision-brief / finance-cockpit / market-radar Forge apps.",
+  "type": "module",
+  "license": "MIT",
+  "author": "cubiczan",
+  "engines": {
+    "node": ">=18"
+  },
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "test": "node --test"
+  },
+  "keywords": [
+    "forge",
+    "atlassian",
+    "webhook",
+    "hmac",
+    "fail-closed",
+    "resolver",
+    "ttl-cache"
+  ]
+}

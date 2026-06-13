@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "scope-core"
+version = "0.1.0"
+description = "Shared, domain-agnostic engine for the scope-* data pipelines: safe Athena queries + base ingestion/analysis handlers + AWS utilities."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "icohangar-ops" }]
+keywords = ["athena", "lambda", "aws", "etl", "scope"]
+dependencies = [
+    "boto3>=1.26",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
