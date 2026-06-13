@@ -1,0 +1,55 @@
+{
+  "name": "@cubiczan/resilience",
+  "version": "0.1.0",
+  "description": "Dependency-light resilience primitives: safeFetch (timeout + retry/backoff + SSRF allowlist), fail-closed requireAuth with in-memory rate limiting, and composable withTimeout/retry.",
+  "type": "module",
+  "license": "MIT",
+  "author": "cubiczan",
+  "engines": {
+    "node": ">=18"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "peerDependencies": {
+    "zod": "^3.0.0 || ^4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "zod": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "vitest": "^2.0.0",
+    "zod": "^3.23.0"
+  },
+  "keywords": [
+    "resilience",
+    "retry",
+    "backoff",
+    "timeout",
+    "fetch",
+    "ssrf",
+    "rate-limit",
+    "auth",
+    "fail-closed"
+  ]
+}

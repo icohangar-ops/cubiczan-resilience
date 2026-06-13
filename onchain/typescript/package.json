@@ -1,0 +1,29 @@
+{
+  "name": "@cubiczan/resilient-onchain",
+  "version": "0.1.0",
+  "description": "Chain-library-agnostic resilient on-chain write helper: bounded retry + fee bump, nonce management, tx-success assertion, circuit breaker, idempotency guard.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^25.9.3",
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.0"
+  }
+}
