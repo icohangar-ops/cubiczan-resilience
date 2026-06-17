@@ -10,3 +10,9 @@ __pycache__/
 venv/
 .eggs/
 *.pyc
+.env
+*.log
+.DS_Store
+coverage/
+.coverage
+htmlcov/
