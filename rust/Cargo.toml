@@ -2,11 +2,22 @@
 name = "resilient-call"
 version = "0.1.0"
 edition = "2021"
-license = "MIT OR Apache-2.0"
+rust-version = "1.70"
+license = "MIT"
 description = "Resilience primitives: async retry with full-jitter exponential backoff, tokio timeout wrapper, CockroachDB serializable-retry (SQLSTATE 40001), and a file-backed idempotency ledger for guarding money/state operations."
-repository = "https://codeberg.org/cubiczan/cubiczan-resilience"
+readme = "README.md"
+repository = "https://github.com/icohangar-ops/cubiczan-resilience"
+homepage = "https://github.com/icohangar-ops/cubiczan-resilience"
+documentation = "https://docs.rs/resilient-call"
+authors = ["Shyam Desigan <sam@cubiczan.com>"]
 keywords = ["retry", "backoff", "jitter", "idempotency", "cockroachdb"]
 categories = ["asynchronous", "database"]
+include = [
+    "src/**/*",
+    "Cargo.toml",
+    "README.md",
+    "LICENSE",
+]
 
 [dependencies]
 tokio = { version = "1", features = ["time", "macros", "rt"] }

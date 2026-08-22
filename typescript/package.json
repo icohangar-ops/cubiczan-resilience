@@ -4,7 +4,7 @@
   "description": "Dependency-light resilience primitives: safeFetch (timeout + retry/backoff + SSRF allowlist), fail-closed requireAuth with in-memory rate limiting, and composable withTimeout/retry.",
   "type": "module",
   "license": "MIT",
-  "author": "cubiczan",
+  "author": "Shyam Desigan <sam@cubiczan.com>",
   "engines": {
     "node": ">=18"
   },
@@ -19,14 +19,28 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "sideEffects": false,
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/icohangar-ops/cubiczan-resilience.git",
+    "directory": "typescript"
+  },
+  "homepage": "https://github.com/icohangar-ops/cubiczan-resilience#readme",
+  "bugs": {
+    "url": "https://github.com/icohangar-ops/cubiczan-resilience/issues"
   },
   "peerDependencies": {
     "zod": "^3.0.0 || ^4.0.0"
