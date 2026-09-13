@@ -28,7 +28,7 @@ use serde_json::Value;
 use sha2::Sha256;
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use thiserror::Error;
@@ -50,6 +50,8 @@ pub enum AuditError {
     Json(#[from] serde_json::Error),
     #[error("audit ledger lock poisoned")]
     Poisoned,
+    #[error("audit ledger path escapes allowed base directory")]
+    PathEscape,
 }
 
 /// Caller-supplied fields of an audit record. `inputs` and `sources` accept any
@@ -130,6 +132,7 @@ impl VerifyResult {
 /// ```
 pub struct AuditLedger {
     path: PathBuf,
+    base_dir: PathBuf,
     key: String,
     /// Signature of the last appended record; seeds the next `prev_sig`.
     last_sig: Mutex<String>,
@@ -139,14 +142,29 @@ impl AuditLedger {
     /// Open (or create) a ledger at `path`. When `key` is `None`, the signing
     /// key is resolved from the `AUDIT_LEDGER_KEY` env var, then
     /// [`DEFAULT_AUDIT_LEDGER_KEY`]. The chain resumes from any existing file.
+    ///
+    /// `path` is resolved and must stay under the process cwd. Use
+    /// [`AuditLedger::open_under`] to confine to a different base directory.
     pub fn open(path: impl Into<PathBuf>, key: Option<String>) -> Result<Self, AuditError> {
-        let path = path.into();
+        let cwd = std::env::current_dir()?;
+        Self::open_under(path, key, cwd)
+    }
+
+    /// Open a ledger at `path`, rejecting any path that escapes `base_dir`.
+    pub fn open_under(
+        path: impl Into<PathBuf>,
+        key: Option<String>,
+        base_dir: impl AsRef<Path>,
+    ) -> Result<Self, AuditError> {
+        let base_dir = resolve_base_dir(base_dir.as_ref())?;
+        let path = confine_path(&path.into(), &base_dir)?;
         let last_sig = read_records(&path)?
             .last()
             .map(|r| r.sig.clone())
             .unwrap_or_default();
         Ok(Self {
             path,
+            base_dir,
             key: resolve_key(key),
             last_sig: Mutex::new(last_sig),
         })
@@ -187,7 +205,7 @@ impl AuditLedger {
 
     /// Re-walk the ledger and recompute every signature in-chain.
     pub fn verify(&self) -> Result<VerifyResult, AuditError> {
-        verify_ledger(&self.path, Some(&self.key))
+        verify_ledger_under(&self.path, Some(&self.key), &self.base_dir)
     }
 }
 
@@ -195,9 +213,24 @@ impl AuditLedger {
 /// signature from the stored content plus the running `prev_sig` and returns the
 /// index of the first broken line. When `key` is `None`, resolves it the same
 /// way [`AuditLedger::open`] does.
+///
+/// `path` is resolved and must stay under the process cwd. Use
+/// [`verify_ledger_under`] to confine to a different base directory.
 pub fn verify_ledger(path: &Path, key: Option<&str>) -> Result<VerifyResult, AuditError> {
+    let cwd = std::env::current_dir()?;
+    verify_ledger_under(path, key, &cwd)
+}
+
+/// Verify a ledger file, resolving `path` and rejecting anything that escapes
+/// `base_dir`.
+pub fn verify_ledger_under(
+    path: &Path,
+    key: Option<&str>,
+    base_dir: &Path,
+) -> Result<VerifyResult, AuditError> {
+    let path = confine_path(path, base_dir)?;
     let resolved = key.map(str::to_string).unwrap_or_else(|| resolve_key(None));
-    let records = read_records(path)?;
+    let records = read_records(&path)?;
 
     let mut prev_sig = String::new();
     for (i, record) in records.iter().enumerate() {
@@ -224,6 +257,44 @@ pub fn verify_ledger(path: &Path, key: Option<&str>) -> Result<VerifyResult, Aud
 fn resolve_key(key: Option<String>) -> String {
     key.or_else(|| std::env::var(AUDIT_LEDGER_KEY_ENV).ok())
         .unwrap_or_else(|| DEFAULT_AUDIT_LEDGER_KEY.to_string())
+}
+
+fn resolve_base_dir(base_dir: &Path) -> Result<PathBuf, AuditError> {
+    if base_dir.is_absolute() {
+        return Ok(normalize_lexically(base_dir));
+    }
+    Ok(normalize_lexically(&std::env::current_dir()?.join(base_dir)))
+}
+
+/// Resolve `user_path` against `base_dir` and reject it if the result escapes
+/// that directory (relative `..` traversal or an absolute path outside the
+/// base). Uses lexical normalization so the ledger file need not exist yet.
+fn confine_path(user_path: &Path, base_dir: &Path) -> Result<PathBuf, AuditError> {
+    let base = resolve_base_dir(base_dir)?;
+    let resolved = if user_path.is_absolute() {
+        normalize_lexically(user_path)
+    } else {
+        normalize_lexically(&base.join(user_path))
+    };
+    if !resolved.starts_with(&base) {
+        return Err(AuditError::PathEscape);
+    }
+    Ok(resolved)
+}
+
+fn normalize_lexically(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for comp in path.components() {
+        match comp {
+            Component::Prefix(_) | Component::RootDir => out.push(comp.as_os_str()),
+            Component::CurDir => {}
+            Component::ParentDir => {
+                out.pop();
+            }
+            Component::Normal(c) => out.push(c),
+        }
+    }
+    out
 }
 
 /// The canonical bytes signed for a record: content + `prev_sig`, never `sig`.

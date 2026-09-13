@@ -30,8 +30,8 @@ mod retry;
 mod timeout;
 
 pub use audit::{
-    verify_ledger, AuditError, AuditLedger, AuditRecord, AuditRecordInput, VerifyResult,
-    AUDIT_LEDGER_KEY_ENV, DEFAULT_AUDIT_LEDGER_KEY,
+    verify_ledger, verify_ledger_under, AuditError, AuditLedger, AuditRecord,
+    AuditRecordInput, VerifyResult, AUDIT_LEDGER_KEY_ENV, DEFAULT_AUDIT_LEDGER_KEY,
 };
 pub use crdb::{
     crdb_retry, crdb_retry_with_policy, default_crdb_policy, SqlError, SERIALIZATION_FAILURE,

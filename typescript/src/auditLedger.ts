@@ -5,7 +5,7 @@ import {
   readFileSync,
   existsSync,
 } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 
 /**
  * Signed, append-only JSONL audit ledger.
@@ -91,6 +91,12 @@ export interface AuditLedgerOptions {
    * {@link DEFAULT_AUDIT_LEDGER_KEY} (test-only).
    */
   readonly key?: string;
+  /**
+   * Directory that {@link AuditLedgerOptions.path} must resolve under.
+   * Defaults to `process.cwd()`. Paths that escape this directory (e.g. via
+   * `..`) are rejected.
+   */
+  readonly baseDir?: string;
 }
 
 /** Stable, whitespace-free JSON with recursively sorted object keys. */
@@ -112,6 +118,23 @@ function sortKeys(value: unknown): unknown {
 
 function resolveKey(key?: string): string {
   return key ?? process.env[AUDIT_LEDGER_KEY_ENV] ?? DEFAULT_AUDIT_LEDGER_KEY;
+}
+
+/**
+ * Resolve `userPath` against `baseDir` and reject it if the result escapes
+ * that directory (relative `..` traversal or an absolute path outside the
+ * base).
+ */
+function confinePath(userPath: string, baseDir: string): string {
+  const resolvedBase = resolve(baseDir);
+  const resolved = resolve(resolvedBase, userPath);
+  const rel = relative(resolvedBase, resolved);
+  if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
+    throw new Error(
+      `audit ledger path escapes allowed base directory: ${userPath}`,
+    );
+  }
+  return resolved;
 }
 
 /**
@@ -157,11 +180,13 @@ function parseLines(raw: string): AuditRecord[] {
 export class AuditLedger {
   private readonly path: string;
   private readonly key: string;
+  private readonly baseDir: string;
   /** Signature of the last appended record; seeds the next `prev_sig`. */
   private lastSig: string;
 
   constructor(options: AuditLedgerOptions) {
-    this.path = options.path;
+    this.baseDir = resolve(options.baseDir ?? process.cwd());
+    this.path = confinePath(options.path, this.baseDir);
     this.key = resolveKey(options.key);
     // Resume the chain from an existing file so appends stay linked.
     this.lastSig = existsSync(this.path)
@@ -202,7 +227,7 @@ export class AuditLedger {
    * with the same key used to construct this instance.
    */
   verify(): VerifyResult {
-    return verifyLedger(this.path, this.key);
+    return verifyLedger(this.path, this.key, this.baseDir);
   }
 }
 
@@ -210,10 +235,17 @@ export class AuditLedger {
  * Verify a ledger file without constructing an {@link AuditLedger}. Re-derives
  * each signature from the stored content + the running `prev_sig` and returns
  * the index of the first line whose signature or chain link is broken.
+ *
+ * `path` is resolved and must stay under `baseDir` (default `process.cwd()`).
  */
-export function verifyLedger(path: string, key?: string): VerifyResult {
+export function verifyLedger(
+  path: string,
+  key?: string,
+  baseDir?: string,
+): VerifyResult {
+  const confined = confinePath(path, resolve(baseDir ?? process.cwd()));
   const resolvedKey = resolveKey(key);
-  const raw = existsSync(path) ? readFileSync(path, "utf-8") : "";
+  const raw = existsSync(confined) ? readFileSync(confined, "utf-8") : "";
   const records = parseLines(raw);
 
   let prevSig = "";
