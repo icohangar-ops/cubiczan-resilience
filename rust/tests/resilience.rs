@@ -356,32 +356,29 @@ fn audit_accepts_relative_path_under_base() {
 #[test]
 fn audit_rejects_relative_traversal() {
     let dir = tempfile::tempdir().unwrap();
-    let err = AuditLedger::open_under(
+    let result = AuditLedger::open_under(
         "../escaped.jsonl",
         Some(AUDIT_KEY.to_string()),
         dir.path(),
-    )
-    .unwrap_err();
-    assert!(matches!(err, AuditError::PathEscape));
+    );
+    assert!(matches!(result, Err(AuditError::PathEscape)));
 }
 
 #[test]
 fn audit_rejects_nested_traversal() {
     let dir = tempfile::tempdir().unwrap();
-    let err = AuditLedger::open_under(
+    let result = AuditLedger::open_under(
         "nested/../../escaped.jsonl",
         Some(AUDIT_KEY.to_string()),
         dir.path(),
-    )
-    .unwrap_err();
-    assert!(matches!(err, AuditError::PathEscape));
-    let err = verify_ledger_under(
+    );
+    assert!(matches!(result, Err(AuditError::PathEscape)));
+    let result = verify_ledger_under(
         std::path::Path::new("../escaped.jsonl"),
         Some(AUDIT_KEY),
         dir.path(),
-    )
-    .unwrap_err();
-    assert!(matches!(err, AuditError::PathEscape));
+    );
+    assert!(matches!(result, Err(AuditError::PathEscape)));
 }
 
 #[test]
@@ -389,6 +386,6 @@ fn audit_rejects_absolute_path_outside_base() {
     let dir = tempfile::tempdir().unwrap();
     let outside = tempfile::tempdir().unwrap();
     let path = outside.path().join("audit.jsonl");
-    let err = AuditLedger::open_under(&path, Some(AUDIT_KEY.to_string()), dir.path()).unwrap_err();
-    assert!(matches!(err, AuditError::PathEscape));
+    let result = AuditLedger::open_under(&path, Some(AUDIT_KEY.to_string()), dir.path());
+    assert!(matches!(result, Err(AuditError::PathEscape)));
 }
