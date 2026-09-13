@@ -1,6 +1,6 @@
 use resilient_call::{
-    crdb_retry, retry, verify_ledger, with_timeout, AuditLedger, AuditRecordInput, FileLedger,
-    IdempotencyLedger, ResilienceError, RetryPolicy, SqlError,
+    crdb_retry, retry, verify_ledger_under, with_timeout, AuditError, AuditLedger,
+    AuditRecordInput, FileLedger, IdempotencyLedger, ResilienceError, RetryPolicy, SqlError,
 };
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
@@ -199,7 +199,7 @@ fn sample_record(i: u32) -> AuditRecordInput {
 fn audit_append_n_records_and_verify_passes() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("audit.jsonl");
-    let ledger = AuditLedger::open(&path, Some(AUDIT_KEY.to_string())).unwrap();
+    let ledger = AuditLedger::open_under(&path, Some(AUDIT_KEY.to_string()), dir.path()).unwrap();
 
     for i in 0..5 {
         ledger.append(sample_record(i)).unwrap();
@@ -213,7 +213,7 @@ fn audit_append_n_records_and_verify_passes() {
 fn audit_records_chain_to_prior_signature() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("audit.jsonl");
-    let ledger = AuditLedger::open(&path, Some(AUDIT_KEY.to_string())).unwrap();
+    let ledger = AuditLedger::open_under(&path, Some(AUDIT_KEY.to_string()), dir.path()).unwrap();
 
     let s0 = ledger.append(sample_record(0)).unwrap();
     let s1 = ledger.append(sample_record(1)).unwrap();
@@ -236,14 +236,14 @@ fn audit_resumes_chain_across_instances() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("audit.jsonl");
     {
-        let l1 = AuditLedger::open(&path, Some(AUDIT_KEY.to_string())).unwrap();
+        let l1 = AuditLedger::open_under(&path, Some(AUDIT_KEY.to_string()), dir.path()).unwrap();
         l1.append(sample_record(0)).unwrap();
         l1.append(sample_record(1)).unwrap();
     }
-    let l2 = AuditLedger::open(&path, Some(AUDIT_KEY.to_string())).unwrap();
+    let l2 = AuditLedger::open_under(&path, Some(AUDIT_KEY.to_string()), dir.path()).unwrap();
     l2.append(sample_record(2)).unwrap();
 
-    let result = verify_ledger(&path, Some(AUDIT_KEY)).unwrap();
+    let result = verify_ledger_under(&path, Some(AUDIT_KEY), dir.path()).unwrap();
     assert_eq!(result, resilient_call::VerifyResult::Ok { count: 3 });
 }
 
@@ -251,7 +251,7 @@ fn audit_resumes_chain_across_instances() {
 fn audit_detects_edited_payload_at_right_index() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("audit.jsonl");
-    let ledger = AuditLedger::open(&path, Some(AUDIT_KEY.to_string())).unwrap();
+    let ledger = AuditLedger::open_under(&path, Some(AUDIT_KEY.to_string()), dir.path()).unwrap();
     for i in 0..4 {
         ledger.append(sample_record(i)).unwrap();
     }
@@ -271,7 +271,7 @@ fn audit_detects_edited_payload_at_right_index() {
         .join("\n");
     std::fs::write(&path, rewritten + "\n").unwrap();
 
-    let result = verify_ledger(&path, Some(AUDIT_KEY)).unwrap();
+    let result = verify_ledger_under(&path, Some(AUDIT_KEY), dir.path()).unwrap();
     assert!(!result.is_ok());
     assert_eq!(result.tampered_index(), Some(2));
 }
@@ -280,7 +280,7 @@ fn audit_detects_edited_payload_at_right_index() {
 fn audit_detects_deleted_interior_line() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("audit.jsonl");
-    let ledger = AuditLedger::open(&path, Some(AUDIT_KEY.to_string())).unwrap();
+    let ledger = AuditLedger::open_under(&path, Some(AUDIT_KEY.to_string()), dir.path()).unwrap();
     for i in 0..4 {
         ledger.append(sample_record(i)).unwrap();
     }
@@ -294,7 +294,7 @@ fn audit_detects_deleted_interior_line() {
     lines.remove(1); // drop line index 1
     std::fs::write(&path, lines.join("\n") + "\n").unwrap();
 
-    let result = verify_ledger(&path, Some(AUDIT_KEY)).unwrap();
+    let result = verify_ledger_under(&path, Some(AUDIT_KEY), dir.path()).unwrap();
     assert!(!result.is_ok());
     // Former line 2 (now at index 1) has a prev_sig that no longer matches.
     assert_eq!(result.tampered_index(), Some(1));
@@ -304,10 +304,10 @@ fn audit_detects_deleted_interior_line() {
 fn audit_fails_under_wrong_key() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("audit.jsonl");
-    let ledger = AuditLedger::open(&path, Some(AUDIT_KEY.to_string())).unwrap();
+    let ledger = AuditLedger::open_under(&path, Some(AUDIT_KEY.to_string()), dir.path()).unwrap();
     ledger.append(sample_record(0)).unwrap();
 
-    let result = verify_ledger(&path, Some("the-wrong-key")).unwrap();
+    let result = verify_ledger_under(&path, Some("the-wrong-key"), dir.path()).unwrap();
     assert!(!result.is_ok());
     assert_eq!(result.tampered_index(), Some(0));
 }
@@ -316,7 +316,7 @@ fn audit_fails_under_wrong_key() {
 fn audit_verify_passes_on_absent_ledger() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("missing.jsonl");
-    let result = verify_ledger(&path, Some(AUDIT_KEY)).unwrap();
+    let result = verify_ledger_under(&path, Some(AUDIT_KEY), dir.path()).unwrap();
     assert_eq!(result, resilient_call::VerifyResult::Ok { count: 0 });
 }
 
@@ -327,7 +327,7 @@ fn audit_verify_passes_on_absent_ledger() {
 fn audit_cross_language_signature_matches() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("x.jsonl");
-    let ledger = AuditLedger::open(&path, Some("k".to_string())).unwrap();
+    let ledger = AuditLedger::open_under(&path, Some("k".to_string()), dir.path()).unwrap();
     let sig = ledger
         .append(AuditRecordInput {
             event: "e".into(),
@@ -340,4 +340,55 @@ fn audit_cross_language_signature_matches() {
         })
         .unwrap();
     assert_eq!(sig, "d379966f5be33822aa1091efa18034e67e679fbadb168bb73c3f42ef712a46fc");
+}
+
+#[test]
+fn audit_accepts_relative_path_under_base() {
+    let dir = tempfile::tempdir().unwrap();
+    let ledger = AuditLedger::open_under("audit.jsonl", Some(AUDIT_KEY.to_string()), dir.path())
+        .unwrap();
+    ledger.append(sample_record(0)).unwrap();
+    let result =
+        verify_ledger_under(&dir.path().join("audit.jsonl"), Some(AUDIT_KEY), dir.path()).unwrap();
+    assert!(result.is_ok());
+}
+
+#[test]
+fn audit_rejects_relative_traversal() {
+    let dir = tempfile::tempdir().unwrap();
+    let err = AuditLedger::open_under(
+        "../escaped.jsonl",
+        Some(AUDIT_KEY.to_string()),
+        dir.path(),
+    )
+    .unwrap_err();
+    assert!(matches!(err, AuditError::PathEscape));
+}
+
+#[test]
+fn audit_rejects_nested_traversal() {
+    let dir = tempfile::tempdir().unwrap();
+    let err = AuditLedger::open_under(
+        "nested/../../escaped.jsonl",
+        Some(AUDIT_KEY.to_string()),
+        dir.path(),
+    )
+    .unwrap_err();
+    assert!(matches!(err, AuditError::PathEscape));
+    let err = verify_ledger_under(
+        std::path::Path::new("../escaped.jsonl"),
+        Some(AUDIT_KEY),
+        dir.path(),
+    )
+    .unwrap_err();
+    assert!(matches!(err, AuditError::PathEscape));
+}
+
+#[test]
+fn audit_rejects_absolute_path_outside_base() {
+    let dir = tempfile::tempdir().unwrap();
+    let outside = tempfile::tempdir().unwrap();
+    let path = outside.path().join("audit.jsonl");
+    let err = AuditLedger::open_under(&path, Some(AUDIT_KEY.to_string()), dir.path()).unwrap_err();
+    assert!(matches!(err, AuditError::PathEscape));
 }

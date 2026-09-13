@@ -83,6 +83,29 @@ def _resolve_key(key: Optional[str]) -> str:
     return os.environ.get(AUDIT_LEDGER_KEY_ENV, DEFAULT_AUDIT_LEDGER_KEY)
 
 
+def _confine_path(
+    path: Union[str, Path],
+    base_dir: Union[str, Path, None] = None,
+) -> Path:
+    """Resolve ``path`` and reject it if it escapes ``base_dir``.
+
+    ``base_dir`` defaults to the process cwd. Relative ``..`` traversal and
+    absolute paths outside the base are rejected so a caller-supplied ledger
+    path cannot read or write files outside the intended directory.
+    """
+    base = Path(base_dir) if base_dir is not None else Path.cwd()
+    base = base.resolve()
+    candidate = Path(path)
+    resolved = (candidate if candidate.is_absolute() else base / candidate).resolve()
+    try:
+        resolved.relative_to(base)
+    except ValueError as exc:
+        raise ValueError(
+            f"audit ledger path escapes allowed base directory: {path}"
+        ) from exc
+    return resolved
+
+
 def _signing_payload(record: dict[str, Any]) -> dict[str, Any]:
     """The fields that get signed: content + ``prev_sig``, never ``sig``.
 
@@ -130,8 +153,17 @@ class AuditLedger:
     :data:`DEFAULT_AUDIT_LEDGER_KEY` (test-only).
     """
 
-    def __init__(self, path: Union[str, Path], *, key: Optional[str] = None) -> None:
-        self._path = Path(path)
+    def __init__(
+        self,
+        path: Union[str, Path],
+        *,
+        key: Optional[str] = None,
+        base_dir: Union[str, Path, None] = None,
+    ) -> None:
+        self._base_dir = (
+            Path(base_dir).resolve() if base_dir is not None else Path.cwd().resolve()
+        )
+        self._path = _confine_path(path, self._base_dir)
         self._key = _resolve_key(key)
         self._lock = threading.RLock()
         # Resume the chain from an existing file so appends stay linked.
@@ -183,19 +215,24 @@ class AuditLedger:
 
     def verify(self) -> VerifyResult:
         """Re-walk the ledger and recompute every signature in-chain."""
-        return verify_ledger(self._path, key=self._key)
+        return verify_ledger(self._path, key=self._key, base_dir=self._base_dir)
 
 
 def verify_ledger(
-    path: Union[str, Path], *, key: Optional[str] = None
+    path: Union[str, Path],
+    *,
+    key: Optional[str] = None,
+    base_dir: Union[str, Path, None] = None,
 ) -> VerifyResult:
     """Verify a ledger file without constructing an :class:`AuditLedger`.
 
     Re-derives each signature from the stored content plus the running
     ``prev_sig`` and returns the index of the first broken line.
+
+    ``path`` is resolved and must stay under ``base_dir`` (default cwd).
     """
     resolved_key = _resolve_key(key)
-    p = Path(path)
+    p = _confine_path(path, base_dir)
     raw = p.read_text(encoding="utf-8") if p.exists() else ""
     records = _parse_lines(raw)
 

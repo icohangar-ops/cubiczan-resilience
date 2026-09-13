@@ -30,9 +30,83 @@ function readRecords(p: string): AuditRecord[] {
     .map((l) => JSON.parse(l) as AuditRecord);
 }
 
+describe("AuditLedger path confinement", () => {
+  it("accepts a relative path that stays under the base directory", () => {
+    const ledger = new AuditLedger({
+      path: "audit.jsonl",
+      key: KEY,
+      baseDir: dir,
+    });
+    ledger.append({ event: "e0", actor: "a" });
+    expect(verifyLedger(join(dir, "audit.jsonl"), KEY, dir).ok).toBe(true);
+  });
+
+  it("accepts a nested in-tree path", () => {
+    const ledger = new AuditLedger({
+      path: join("nested", "audit.jsonl"),
+      key: KEY,
+      baseDir: dir,
+    });
+    ledger.append({ event: "e0", actor: "a" });
+    expect(
+      verifyLedger(join(dir, "nested", "audit.jsonl"), KEY, dir).ok,
+    ).toBe(true);
+  });
+
+  it("rejects relative traversal out of the base directory", () => {
+    expect(
+      () =>
+        new AuditLedger({
+          path: join("..", "escaped.jsonl"),
+          key: KEY,
+          baseDir: dir,
+        }),
+    ).toThrow(/escapes allowed base directory/);
+  });
+
+  it("rejects nested traversal that resolves outside the base", () => {
+    expect(
+      () =>
+        new AuditLedger({
+          path: join("nested", "..", "..", "escaped.jsonl"),
+          key: KEY,
+          baseDir: dir,
+        }),
+    ).toThrow(/escapes allowed base directory/);
+    expect(() =>
+      verifyLedger(join("..", "escaped.jsonl"), KEY, dir),
+    ).toThrow(/escapes allowed base directory/);
+  });
+
+  it("rejects an absolute path outside the base directory", () => {
+    expect(
+      () =>
+        new AuditLedger({
+          path: join(tmpdir(), "outside-audit.jsonl"),
+          key: KEY,
+          baseDir: dir,
+        }),
+    ).toThrow(/escapes allowed base directory/);
+  });
+
+  it("keeps cwd-relative in-tree paths working without an explicit baseDir", () => {
+    const inTree = join("audit-ledger-confine-test");
+    try {
+      const ledger = new AuditLedger({
+        path: join(inTree, "audit.jsonl"),
+        key: KEY,
+      });
+      ledger.append({ event: "e0", actor: "a" });
+      expect(verifyLedger(join(inTree, "audit.jsonl"), KEY).ok).toBe(true);
+    } finally {
+      rmSync(inTree, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("AuditLedger append + verify", () => {
   it("appends N records and verify passes", () => {
-    const ledger = new AuditLedger({ path, key: KEY });
+    const ledger = new AuditLedger({ path, key: KEY, baseDir: dir });
     for (let i = 0; i < 5; i++) {
       ledger.append({
         event: "decision",
@@ -49,7 +123,7 @@ describe("AuditLedger append + verify", () => {
   });
 
   it("chains each record to the prior signature", () => {
-    const ledger = new AuditLedger({ path, key: KEY });
+    const ledger = new AuditLedger({ path, key: KEY, baseDir: dir });
     const s0 = ledger.append({ event: "e0", actor: "a" });
     const s1 = ledger.append({ event: "e1", actor: "a" });
 
@@ -61,20 +135,20 @@ describe("AuditLedger append + verify", () => {
   });
 
   it("resumes the chain across instances", () => {
-    const l1 = new AuditLedger({ path, key: KEY });
+    const l1 = new AuditLedger({ path, key: KEY, baseDir: dir });
     l1.append({ event: "e0", actor: "a" });
     l1.append({ event: "e1", actor: "a" });
 
-    const l2 = new AuditLedger({ path, key: KEY });
+    const l2 = new AuditLedger({ path, key: KEY, baseDir: dir });
     l2.append({ event: "e2", actor: "a" });
 
-    const result = verifyLedger(path, KEY);
+    const result = verifyLedger(path, KEY, dir);
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.count).toBe(3);
   });
 
   it("verify passes on an empty/absent ledger", () => {
-    const result = verifyLedger(path, KEY);
+    const result = verifyLedger(path, KEY, dir);
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.count).toBe(0);
   });
@@ -82,7 +156,7 @@ describe("AuditLedger append + verify", () => {
 
 describe("AuditLedger tamper detection", () => {
   it("detects an edited payload at the right index", () => {
-    const ledger = new AuditLedger({ path, key: KEY });
+    const ledger = new AuditLedger({ path, key: KEY, baseDir: dir });
     for (let i = 0; i < 4; i++) {
       ledger.append({ event: "decision", actor: "agent-1", inputs: { i } });
     }
@@ -91,13 +165,13 @@ describe("AuditLedger tamper detection", () => {
     recs[2] = { ...recs[2], actor: "attacker" };
     writeFileSync(path, recs.map((r) => JSON.stringify(r)).join("\n") + "\n");
 
-    const result = verifyLedger(path, KEY);
+    const result = verifyLedger(path, KEY, dir);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.tamperedIndex).toBe(2);
   });
 
   it("detects a deleted interior line via a broken chain link", () => {
-    const ledger = new AuditLedger({ path, key: KEY });
+    const ledger = new AuditLedger({ path, key: KEY, baseDir: dir });
     for (let i = 0; i < 4; i++) {
       ledger.append({ event: "decision", actor: "agent-1", inputs: { i } });
     }
@@ -105,16 +179,16 @@ describe("AuditLedger tamper detection", () => {
     recs.splice(1, 1); // drop line index 1
     writeFileSync(path, recs.map((r) => JSON.stringify(r)).join("\n") + "\n");
 
-    const result = verifyLedger(path, KEY);
+    const result = verifyLedger(path, KEY, dir);
     expect(result.ok).toBe(false);
     // Former line 2 (now at index 1) has a prev_sig that no longer matches.
     if (!result.ok) expect(result.tamperedIndex).toBe(1);
   });
 
   it("fails verification under the wrong key", () => {
-    const ledger = new AuditLedger({ path, key: KEY });
+    const ledger = new AuditLedger({ path, key: KEY, baseDir: dir });
     ledger.append({ event: "e0", actor: "a" });
-    const result = verifyLedger(path, "the-wrong-key");
+    const result = verifyLedger(path, "the-wrong-key", dir);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.tamperedIndex).toBe(0);
   });
@@ -124,7 +198,7 @@ describe("AuditLedger cross-language wire format", () => {
   it("matches the shared golden signature vector", () => {
     // The Python and Rust ports assert this exact signature too, so the three
     // implementations can never silently drift on canonicalization / signing.
-    const ledger = new AuditLedger({ path, key: "k" });
+    const ledger = new AuditLedger({ path, key: "k", baseDir: dir });
     const sig = ledger.append({
       event: "e",
       actor: "a",
@@ -140,10 +214,14 @@ describe("AuditLedger cross-language wire format", () => {
 
 describe("AuditLedger key resolution", () => {
   it("falls back to the documented default key", () => {
-    const l1 = new AuditLedger({ path, key: DEFAULT_AUDIT_LEDGER_KEY });
+    const l1 = new AuditLedger({
+      path,
+      key: DEFAULT_AUDIT_LEDGER_KEY,
+      baseDir: dir,
+    });
     l1.append({ event: "e0", actor: "a" });
     // No key passed -> resolves to env or the default; here env is unset.
-    const result = verifyLedger(path);
+    const result = verifyLedger(path, undefined, dir);
     expect(result.ok).toBe(true);
   });
 });
