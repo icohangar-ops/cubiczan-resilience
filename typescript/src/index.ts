@@ -29,6 +29,13 @@ export {
 } from "./auth.js";
 
 export {
+  checkProxyRequest,
+  guardProxyRequest,
+  type ProxyGuardResult,
+  type GuardProxyOptions,
+} from "./proxyGuard.js";
+
+export {
   validateBoundary,
   tryValidateBoundary,
   type SafeParser,

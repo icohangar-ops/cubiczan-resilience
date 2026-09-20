@@ -1,6 +1,6 @@
 {
   "name": "@cubiczan/resilience",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Dependency-light resilience primitives: safeFetch (timeout + retry/backoff + SSRF allowlist), fail-closed requireAuth with in-memory rate limiting, and composable withTimeout/retry.",
   "type": "module",
   "license": "MIT",
