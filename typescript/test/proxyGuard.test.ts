@@ -56,6 +56,15 @@ describe("checkProxyRequest fail-closed", () => {
     if (!result.ok) expect(result.status).toBe(401);
   });
 
+  it("returns 401 on a prefix of the expected secret (timing-safe compare)", () => {
+    const result = checkProxyRequest(
+      reqWith({ "x-proxy-secret": SECRET.slice(0, 8) }),
+      { secret: SECRET },
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.status).toBe(401);
+  });
+
   it("returns 401 when the secret header is missing", () => {
     const result = checkProxyRequest(reqWith({}), { secret: SECRET });
     expect(result.ok).toBe(false);

@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from "node:crypto";
 import {
   SlidingWindowRateLimiter,
   type RateLimitOptions,
@@ -82,6 +83,14 @@ function defaultSecret(): string | undefined {
   return process.env?.PROXY_API_SECRET;
 }
 
+function secretsMatch(provided: string, expected: string): boolean {
+  // Hash both sides to a fixed-length digest so timingSafeEqual never throws
+  // on length mismatch and the comparison leaks no prefix information.
+  const providedDigest = createHash("sha256").update(provided).digest();
+  const expectedDigest = createHash("sha256").update(expected).digest();
+  return timingSafeEqual(providedDigest, expectedDigest);
+}
+
 function clientIp(
   req: Request,
   ipHeaders: readonly string[],
@@ -134,7 +143,7 @@ export function checkProxyRequest(
   }
 
   const provided = req.headers.get(options.secretHeader ?? DEFAULT_SECRET_HEADER);
-  if (!provided || provided !== expected) {
+  if (!provided || !secretsMatch(provided, expected)) {
     return { ok: false, status: 401, reason: "Unauthorized" };
   }
 
