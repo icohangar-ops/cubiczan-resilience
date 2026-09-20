@@ -138,6 +138,21 @@ gate = build_gate(violations=[...])   # deterministic: penalty 12/violation, flo
 report.verification = gate            # status CLEAR only when violations are empty
 ```
 
+Categorically-severe cases (an empty input file) can pin the gate at the floor
+with the severity hint — added in v0.2.1 so consumers no longer need local
+overrides:
+
+```python
+from cubiczan_resilience.verification_gate import SEVERITY_FLOOR, build_gate
+
+gate = build_gate(["transcript file is empty"], severity_hint=SEVERITY_FLOOR)
+# confidence 50 (the floor), violations rendered verbatim
+```
+
+`severity_hint=None` (the default) keeps the equal-weight arithmetic for
+existing callers; any unrecognized hint value raises `ValueError` instead of
+silently no-oping.
+
 ## Development
 
 ```bash
