@@ -137,16 +137,20 @@ describe("checkProxyRequest client IP", () => {
     if (result.ok) expect(result.clientIp).toBe("unknown");
   });
 
-  it("still resolves x-real-ip when trustedProxyCount is 0 (non-hop-list header)", () => {
+  it("collapses x-real-ip to unknown when trustedProxyCount is 0", () => {
+    // Regression: single-value headers used to stay trusted at count 0, but
+    // without a reverse proxy they are ordinary client-set fields — a
+    // caller holding the secret could rotate x-real-ip per request and
+    // never trip the limiter.
     const result = checkProxyRequest(
       reqWith({ "x-proxy-secret": SECRET, "x-real-ip": "198.51.100.9" }),
       { secret: SECRET, trustedProxyCount: 0 },
     );
     expect(result.ok).toBe(true);
-    if (result.ok) expect(result.clientIp).toBe("198.51.100.9");
+    if (result.ok) expect(result.clientIp).toBe("unknown");
   });
 
-  it("skips a spoofed x-forwarded-for and falls through to x-real-ip at count 0", () => {
+  it("never trusts any client-IP header at count 0, forwarded or not", () => {
     const result = checkProxyRequest(
       reqWith({
         "x-proxy-secret": SECRET,
@@ -156,7 +160,7 @@ describe("checkProxyRequest client IP", () => {
       { secret: SECRET, trustedProxyCount: 0 },
     );
     expect(result.ok).toBe(true);
-    if (result.ok) expect(result.clientIp).toBe("198.51.100.9");
+    if (result.ok) expect(result.clientIp).toBe("unknown");
   });
 
   it("falls back to x-real-ip", () => {
@@ -250,6 +254,27 @@ describe("checkProxyRequest rate limiting", () => {
     expect(checkProxyRequest(req(), optsWith(62_000)).ok).toBe(true);
     // Same config again: the limit-1 limiter must already be exhausted.
     expect(checkProxyRequest(req(), optsWith(62_000)).ok).toBe(false);
+  });
+
+  it("blocks header-rotation rate-limit bypass at count 0", () => {
+    // Regression: with per-call fresh options and rotating spoofed IPs, the
+    // limiter must still see one shared bucket and trip the limit.
+    let call = 0;
+    const req = () =>
+      reqWith({
+        "x-proxy-secret": SECRET,
+        "x-real-ip": `198.51.100.${call++}`,
+      });
+    const inlineOpts = () => ({
+      secret: SECRET,
+      trustedProxyCount: 0 as const,
+      rateLimit: { limit: 2, windowMs: 63_000 },
+    });
+    expect(checkProxyRequest(req(), inlineOpts()).ok).toBe(true);
+    expect(checkProxyRequest(req(), inlineOpts()).ok).toBe(true);
+    const third = checkProxyRequest(req(), inlineOpts());
+    expect(third.ok).toBe(false);
+    if (!third.ok) expect(third.status).toBe(429);
   });
 
   it("skips rate limiting when no limiter is configured", () => {

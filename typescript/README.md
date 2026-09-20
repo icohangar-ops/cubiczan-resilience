@@ -172,14 +172,16 @@ Client-IP rate limiting trusts reverse proxies, not clients. Reverse proxies
 entries. The guard selects the hop observed by the **outermost trusted
 proxy**: `trustedProxyCount` (default 1) entries from the right. Set it to
 your real proxy depth — too low collapses callers into shared buckets
-(conservative), too high lets spoofed entries back in. With `0`, hop-list
-headers (`x-forwarded-*`) are never trusted; single-value headers (e.g.
-`x-real-ip`) still resolve, so callers without one share the `unknown`
-bucket. **Direct exposure (no reverse proxy): set `trustedProxyCount: 0`**
-— at the default `1`, the sole `x-forwarded-for` entry is fully
+(conservative), too high lets spoofed entries back in. With `0`, NO
+client-IP header is trusted: without a reverse proxy, hop-list and
+single-value headers (`x-forwarded-*`, `x-real-ip`) alike are ordinary
+client-set fields, so every caller shares the `unknown` bucket.
+**Direct exposure (no reverse proxy): set `trustedProxyCount: 0`** — at
+the default `1`, the sole `x-forwarded-for` entry is fully
 caller-controlled, and a caller holding the proxy secret can rotate it per
 request to land in a fresh rate-limit bucket, silently never tripping the
-limit.
+limit. To trust a single-value header set by your edge, use
+`trustedProxyCount: 1` with `ipHeaders: ["x-real-ip"]`.
 
 ---
 

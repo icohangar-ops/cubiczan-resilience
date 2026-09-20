@@ -65,12 +65,12 @@ export interface GuardProxyOptions {
    * trusted proxy sits `trustedProxyCount` hops from the right; client- or
    * attacker-supplied entries further left are never selected. Set this to
    * your real proxy depth: too low collapses callers into shared buckets
-   * (conservative), too high lets spoofed entries back in. With 0, hop-list
-   * headers are never trusted and callers without another IP header share
-   * the "unknown" bucket; single-value headers (e.g. `x-real-ip`) still
-   * resolve — they carry no client-injectable entries. With no reverse
-   * proxy at all (direct exposure), set 0: any nonzero count trusts
-   * caller-controlled entries.
+   * (conservative), too high lets spoofed entries back in. With 0, no
+   * client-IP header is trusted at all — without a reverse proxy, hop-list
+   * and single-value headers alike are ordinary client-set fields — so
+   * every caller shares the "unknown" bucket. To trust a single-value
+   * header set by your edge (e.g. `x-real-ip`), use `trustedProxyCount: 1`
+   * with `ipHeaders: ["x-real-ip"]`.
    */
   readonly trustedProxyCount?: number;
 }
@@ -125,15 +125,20 @@ function clientIp(
   ipHeaders: readonly string[],
   trustedProxyCount: number,
 ): string {
+  // No trusted proxy means NO header on the request is proxy-observed —
+  // hop-list and single-value alike are ordinary client-set fields, so a
+  // caller can rotate any of them per request. Fail closed: every caller
+  // shares the "unknown" bucket rather than a spoofable per-IP one.
+  if (trustedProxyCount <= 0) return "unknown";
   for (const header of ipHeaders) {
     const value = req.headers.get(header);
     if (!value) continue;
     // `x-forwarded-*` are hop lists: each proxy APPENDS the address it saw,
-    // so clients can prepend spoofable entries. Other headers (e.g.
-    // `x-real-ip`) hold a single proxy-observed value — never a client-
-    // injectable list — so they stay trustworthy regardless of the count.
+    // so clients can prepend spoofable entries; the trusted-hop arithmetic
+    // below discards them. Other headers (e.g. `x-real-ip`) hold a single
+    // proxy-observed value — reachable only when a trusted proxy exists,
+    // i.e. trustedProxyCount >= 1.
     const isHopList = HOP_LIST_HEADER.test(header);
-    if (isHopList && trustedProxyCount <= 0) continue;
     const hops = value
       .split(",")
       .map((hop) => hop.trim())
