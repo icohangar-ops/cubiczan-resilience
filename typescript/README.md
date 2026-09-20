@@ -175,7 +175,11 @@ your real proxy depth — too low collapses callers into shared buckets
 (conservative), too high lets spoofed entries back in. With `0`, hop-list
 headers (`x-forwarded-*`) are never trusted; single-value headers (e.g.
 `x-real-ip`) still resolve, so callers without one share the `unknown`
-bucket.
+bucket. **Direct exposure (no reverse proxy): set `trustedProxyCount: 0`**
+— at the default `1`, the sole `x-forwarded-for` entry is fully
+caller-controlled, and a caller holding the proxy secret can rotate it per
+request to land in a fresh rate-limit bucket, silently never tripping the
+limit.
 
 ---
 

@@ -35,6 +35,14 @@ export interface GuardProxyOptions {
    * (limit + windowMs) process-wide, so options objects constructed inline
    * per request rate-limit correctly; distinct configs get distinct
    * limiters.
+   *
+   * TOPOLOGY WARNING: client-IP keys come from trusted proxy headers, and
+   * the default `trustedProxyCount: 1` assumes a reverse proxy is in front
+   * of this process. Deploying WITHOUT one? Set `trustedProxyCount: 0` —
+   * otherwise the single-entry `x-forwarded-for` a direct client sends is
+   * fully caller-controlled, so a caller holding the proxy secret can send
+   * a fresh value per request, land in a fresh bucket, and never trip the
+   * limit.
    */
   readonly rateLimit?: RateLimitOptions;
   /**
@@ -60,7 +68,9 @@ export interface GuardProxyOptions {
    * (conservative), too high lets spoofed entries back in. With 0, hop-list
    * headers are never trusted and callers without another IP header share
    * the "unknown" bucket; single-value headers (e.g. `x-real-ip`) still
-   * resolve — they carry no client-injectable entries.
+   * resolve — they carry no client-injectable entries. With no reverse
+   * proxy at all (direct exposure), set 0: any nonzero count trusts
+   * caller-controlled entries.
    */
   readonly trustedProxyCount?: number;
 }
