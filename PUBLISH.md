@@ -4,6 +4,35 @@ Publish each language package from its subdirectory. Do not publish until you ha
 
 Repository: https://github.com/icohangar-ops/cubiczan-resilience
 
+## Consuming before npm credentials exist — versioned git tag
+
+Until `@cubiczan/resilience` is on a registry, consumers install straight from
+git. A root-level manifest makes the repo root installable; its `prepare`
+script builds `typescript/dist` at install time (npm or bun both run
+`prepare` for git dependencies — bun consumers must list the package under
+`trustedDependencies` to allow it).
+
+```bash
+# after tagging (see below)
+npm install github:icohangar-ops/cubiczan-resilience#typescript-v0.2.0
+# or with bun:
+bun add github:icohangar-ops/cubiczan-resilience#typescript-v0.2.0
+```
+
+Tagging a release (from the repo root, after bumping the version in
+`typescript/package.json` — and the root shim's manifest, which must stay in
+lockstep):
+
+```bash
+git tag typescript-v0.2.0 && git push origin typescript-v0.2.0
+```
+
+Bun consumers additionally need, in their own `package.json`:
+
+```json
+{ "trustedDependencies": ["@cubiczan/resilience"] }
+```
+
 ## npm — `@cubiczan/resilience`
 
 ```bash

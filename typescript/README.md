@@ -17,6 +17,15 @@ npm install @cubiczan/resilience
 npm install zod
 ```
 
+No registry credentials yet? Install straight from git — the repo root is an
+installable shim that builds `dist/` in a `prepare` script (see
+[PUBLISH.md](../PUBLISH.md)):
+
+```bash
+npm install github:icohangar-ops/cubiczan-resilience#typescript-v0.2.0
+# bun: bun add github:icohangar-ops/cubiczan-resilience#typescript-v0.2.0
+```
+
 Requires Node 18+ (global `fetch` / `AbortController`). Targets ES2022, ships
 ESM + `.d.ts`.
 
@@ -118,6 +127,39 @@ export async function POST(req: Request) {
   return Response.json({ ok: true });
 }
 ```
+
+---
+
+## `checkProxyRequest` / `guardProxyRequest`
+
+Fail-closed guard for API-proxy routes that front a shared upstream quota: the
+caller must present a secret header, and each client IP is rate-limited under
+a sliding window. If the expected secret is **unset** the request is **refused**
+(503) — it never degrades to open. A missing/mismatched secret is `401`; an
+exhausted rate limit is `429` with a `retry-after` header.
+
+The secret defaults to the `PROXY_API_SECRET` environment variable (read at
+call time); supply `secret` explicitly to override. Framework-agnostic —
+accepts any `Request`, including Next.js `NextRequest`.
+
+```ts
+import { guardProxyRequest, SlidingWindowRateLimiter } from "@cubiczan/resilience";
+
+// One shared limiter for every proxy route in the process:
+const limiter = new SlidingWindowRateLimiter({ limit: 30, windowMs: 60_000 });
+
+export async function POST(req: Request) {
+  const denied = guardProxyRequest(req, { limiter });
+  if (denied) return denied; // 503 misconfigured / 401 unauthorized / 429 limited
+
+  // ...authorized — forward to the upstream API (use safeFetch + allowlist)
+}
+```
+
+Prefer one options object (or one explicit `limiter`) shared across all proxy
+routes so the per-IP quota is process-wide; distinct options objects get
+distinct limiters. Use `checkProxyRequest` when you need the typed outcome
+(`clientIp`, `retryAfterMs`) instead of a ready-made `Response`.
 
 ---
 
