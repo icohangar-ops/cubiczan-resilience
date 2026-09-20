@@ -72,6 +72,10 @@ REQUIRES_HUMAN_VERIFICATION = "REQUIRES_HUMAN_VERIFICATION"
 #: market-sentiment-fedgpt) already subtracted 12; hedge-fund-13f-radar used
 #: 10 and is migrated to 12 here. Revisit only with domain sign-off — the
 #: pinning test is the standing ground against a casual "why not 10".
+#:
+#: Import policy: import these constants to verify or display them (tests,
+#: audit logs, report footnotes) — never to derive thresholds from them.
+#: Derived consumer logic breaks silently when the canonical number moves.
 PENALTY_PER_VIOLATION = 12
 
 #: Confidence never drops below this, so a failing report stays actionable.
