@@ -35,6 +35,16 @@ should not have to depend on a protocol runtime; this module is the
 lighter primitive. Fold into CHP instead only if CHP publishes a
 Profile-A report-gate surface in the Python runtime.
 
+Package boundary, recorded deliberately (not an accident of history): this
+scaffold lives in ``cubiczan-resilience`` rather than a new
+``cubiczan-report`` package because the donor repos already consume
+cubiczan-resilience as a git dependency — extraction here added zero
+distribution steps, and the pattern is resilience-adjacent (a gate that
+keeps degraded output from being trusted silently). Revisit trigger: the
+moment one or two more report-level primitives appear (source-attribution
+checks, citation integrity), split them into ``cubiczan-report`` instead
+of growing this module.
+
 Example::
 
     gate = build_gate(violations=["row 7 missing source_url"])
@@ -57,6 +67,11 @@ REQUIRES_HUMAN_VERIFICATION = "REQUIRES_HUMAN_VERIFICATION"
 #: Confidence subtracted per violation. Canonical number for the whole
 #: portfolio; do not fork it per repo (that is the drift this module exists
 #: to end).
+#:
+#: Why 12: majority basis — 2 of the 3 donor repos (earnings-call-nlp-lab,
+#: market-sentiment-fedgpt) already subtracted 12; hedge-fund-13f-radar used
+#: 10 and is migrated to 12 here. Revisit only with domain sign-off — the
+#: pinning test is the standing ground against a casual "why not 10".
 PENALTY_PER_VIOLATION = 12
 
 #: Confidence never drops below this, so a failing report stays actionable.
@@ -102,6 +117,13 @@ def build_gate(violations: Sequence[str]) -> VerificationGate:
     This function is the single source of the confidence arithmetic. The
     donor repos inlined it with diverging penalties (-12 / -10); every
     consumer now calls this instead.
+
+    Warning: blank and whitespace-only entries are silently filtered
+    before scoring, so a violations list containing only blanks yields a
+    CLEAR gate at confidence 100. That is "no violations found", which is
+    only as trustworthy as the checks that produced the list — callers
+    assembling violations programmatically must not treat it as proof the
+    checks ran.
     """
     cleaned = [str(v) for v in violations if str(v).strip()]
     if not cleaned:
