@@ -8,9 +8,17 @@ Repository: https://github.com/icohangar-ops/cubiczan-resilience
 
 Until `@cubiczan/resilience` is on a registry, consumers install straight from
 git. A root-level manifest makes the repo root installable; its `prepare`
-script builds `typescript/dist` at install time (npm or bun both run
-`prepare` for git dependencies — bun consumers must list the package under
-`trustedDependencies` to allow it).
+script builds `typescript/dist` at install time.
+
+Lifecycle-script behavior differs by consumer — verified empirically:
+
+- **bun**: runs `prepare` for git dependencies, but only when the package is
+  listed under `trustedDependencies` in the consuming project.
+- **npm** (verified on npm 11): SKIPS `prepare` for git dependencies
+  installed from codeload tarballs, so `dist/` is not built during a plain
+  `npm install`. npm consumers need a postinstall build step — see
+  metacomp-visionx-dashboard's `scripts/build-git-dep-resilience.mjs` for a
+  working example.
 
 ```bash
 # after tagging (see below)
