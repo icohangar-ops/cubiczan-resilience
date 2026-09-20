@@ -1,0 +1,121 @@
+"""VerificationGate: the report scaffold that keeps unverified output from looking decision-ready.
+
+Extracted from the byte-similar ``VerificationGate`` scaffolds carried by
+``earnings-call-nlp-lab``, ``market-sentiment-fedgpt``, and
+``hedge-fund-13f-radar`` (matrix row 29). The three copies had already
+drifted at extraction time: the per-violation confidence penalty was
+``-12`` in two repos and ``-10`` in the third. The whole point of this
+module is that the rule lives in exactly one place from now on.
+
+The pattern: every generated report ends with a gate object that states,
+in the report itself, whether the report's own checks passed. A report
+rendered without its gate cannot masquerade as verified; a gate with
+violations carries a visibly reduced confidence and names every
+violation verbatim.
+
+Design rules, taken from the donor implementations:
+
+* **Violations are strings, and they are the evidence.** Each violation is
+  a human-readable sentence naming what is missing or malformed — not a
+  code the reader must decode.
+* **Confidence is deterministic.** Two runs over the same violations
+  produce the same number. There is no model in this module.
+* **The floor is real.** Confidence stops at :data:`CONFIDENCE_FLOOR`
+  (50): a failing gate never scores 0, because a reader must still be
+  able to act on the listed violations rather than discard the report.
+* **The status vocabulary has two words.** :data:`CLEAR` only at full
+  confidence; :data:`REQUIRES_HUMAN_VERIFICATION` for anything else.
+
+The CHP alternative, priced (row 29): CHP's runtime (consensus-hardening-
+protocol) ships an *enforced decision gate* — R0, adversary pass,
+foundation scoring, human lock — which is heavier machinery than a
+report-level scaffold needs, and its published npm package covers
+Profile B only. A report that merely states its own verification status
+should not have to depend on a protocol runtime; this module is the
+lighter primitive. Fold into CHP instead only if CHP publishes a
+Profile-A report-gate surface in the Python runtime.
+
+Example::
+
+    gate = build_gate(violations=["row 7 missing source_url"])
+    if gate.status is REQUIRES_HUMAN_VERIFICATION:
+        render_warning(gate.violations)
+    report.verification = gate          # the report carries its gate
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Sequence
+
+#: Status of a gate whose checks all passed.
+CLEAR = "CLEAR"
+
+#: Status of a gate with at least one violation.
+REQUIRES_HUMAN_VERIFICATION = "REQUIRES_HUMAN_VERIFICATION"
+
+#: Confidence subtracted per violation. Canonical number for the whole
+#: portfolio; do not fork it per repo (that is the drift this module exists
+#: to end).
+PENALTY_PER_VIOLATION = 12
+
+#: Confidence never drops below this, so a failing report stays actionable.
+CONFIDENCE_FLOOR = 50
+
+
+@dataclass(frozen=True)
+class VerificationGate:
+    """The verification block a generated report carries inside itself.
+
+    ``status`` is :data:`CLEAR` exactly when ``violations`` is empty and
+    ``confidence`` is 100; otherwise
+    :data:`REQUIRES_HUMAN_VERIFICATION`.
+    """
+
+    status: str
+    confidence: int
+    violations: List[str] = field(default_factory=list)
+
+    @property
+    def is_clear(self) -> bool:
+        return self.status == CLEAR
+
+    def to_dict(self) -> Dict[str, Any]:
+        """JSON-ready form, matching the donor repos' ``to_dict`` shape."""
+        return {
+            "status": self.status,
+            "confidence": self.confidence,
+            "violations": list(self.violations),
+        }
+
+    def blocking_issues_lines(self) -> List[str]:
+        """The markdown block the donor repos render under a violations
+        heading; empty when the gate is clear."""
+        if not self.violations:
+            return []
+        return [f"- {item}" for item in self.violations]
+
+
+def build_gate(violations: Sequence[str]) -> VerificationGate:
+    """Compute the canonical gate from a list of violation strings.
+
+    This function is the single source of the confidence arithmetic. The
+    donor repos inlined it with diverging penalties (-12 / -10); every
+    consumer now calls this instead.
+    """
+    cleaned = [str(v) for v in violations if str(v).strip()]
+    if not cleaned:
+        return VerificationGate(
+            status=CLEAR,
+            confidence=100,
+            violations=[],
+        )
+    confidence = max(
+        CONFIDENCE_FLOOR,
+        100 - PENALTY_PER_VIOLATION * len(cleaned),
+    )
+    return VerificationGate(
+        status=REQUIRES_HUMAN_VERIFICATION,
+        confidence=confidence,
+        violations=cleaned,
+    )
