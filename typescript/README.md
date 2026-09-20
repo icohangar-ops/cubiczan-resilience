@@ -158,10 +158,12 @@ export async function POST(req: Request) {
 }
 ```
 
-Prefer one options object (or one explicit `limiter`) shared across all proxy
-routes so the per-IP quota is process-wide; distinct options objects get
-distinct limiters. Use `checkProxyRequest` when you need the typed outcome
-(`clientIp`, `retryAfterMs`) instead of a ready-made `Response`.
+The per-IP quota is process-wide and keyed by the `rateLimit` config
+(`limit` + `windowMs`): options objects constructed inline per request share
+one limiter, and distinct configs get distinct limiters. Pass an explicit
+`limiter` to scope the quota by hand. Use `checkProxyRequest` when you need
+the typed outcome (`clientIp`, `retryAfterMs`) instead of a ready-made
+`Response`.
 
 ### Deployment topology — `trustedProxyCount`
 

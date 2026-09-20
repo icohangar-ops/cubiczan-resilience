@@ -222,6 +222,36 @@ describe("checkProxyRequest rate limiting", () => {
     if (!second.ok) expect(second.status).toBe(429);
   });
 
+  it("still trips 429 when options are constructed inline per call", () => {
+    // Regression: the limiter registry was keyed by the options-object
+    // identity, so a fresh literal per call orphaned its limiter and never
+    // accumulated hits — the limit silently never tripped.
+    const req = () => reqWith({ "x-proxy-secret": SECRET });
+    const inlineOpts = () => ({
+      secret: SECRET,
+      rateLimit: { limit: 2, windowMs: 61_000 },
+    });
+    expect(checkProxyRequest(req(), inlineOpts()).ok).toBe(true);
+    expect(checkProxyRequest(req(), inlineOpts()).ok).toBe(true);
+    const third = checkProxyRequest(req(), inlineOpts());
+    expect(third.ok).toBe(false);
+    if (!third.ok) {
+      expect(third.status).toBe(429);
+      expect(third.retryAfterMs).toBeGreaterThan(0);
+    }
+  });
+
+  it("gives distinct rateLimit configs distinct limiters", () => {
+    const req = () => reqWith({ "x-proxy-secret": SECRET });
+    const optsWith = (windowMs: number) => ({
+      secret: SECRET,
+      rateLimit: { limit: 1, windowMs },
+    });
+    expect(checkProxyRequest(req(), optsWith(62_000)).ok).toBe(true);
+    // Same config again: the limit-1 limiter must already be exhausted.
+    expect(checkProxyRequest(req(), optsWith(62_000)).ok).toBe(false);
+  });
+
   it("skips rate limiting when no limiter is configured", () => {
     for (let i = 0; i < 50; i++) {
       const result = checkProxyRequest(reqWith({ "x-proxy-secret": SECRET }), {

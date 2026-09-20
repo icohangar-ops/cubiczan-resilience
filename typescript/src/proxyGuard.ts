@@ -31,13 +31,16 @@ export interface GuardProxyOptions {
   /**
    * Optional per-client-IP sliding-window rate limit. Without it the guard
    * only authenticates; supply this so anonymous callers cannot exhaust the
-   * upstream API quota the proxy fronts.
+   * upstream API quota the proxy fronts. The limiter is shared per config
+   * (limit + windowMs) process-wide, so options objects constructed inline
+   * per request rate-limit correctly; distinct configs get distinct
+   * limiters.
    */
   readonly rateLimit?: RateLimitOptions;
   /**
    * Share a limiter instance across call sites (e.g. one quota for every
    * proxy route in the process). When omitted but `rateLimit` is set, an
-   * internal limiter is created and reused per options object.
+   * internal limiter keyed by the rateLimit config is created and reused.
    */
   readonly limiter?: SlidingWindowRateLimiter;
   /**
@@ -67,17 +70,27 @@ const DEFAULT_IP_HEADERS = ["x-forwarded-for", "x-real-ip"] as const;
 /** Hop-list headers follow append semantics; anything else is single-value. */
 const HOP_LIST_HEADER = /^x-forwarded-/i;
 
-const limiterRegistry = new WeakMap<object, SlidingWindowRateLimiter>();
+/**
+ * Limiters are keyed by the rateLimit CONFIG (limit + windowMs), not by the
+ * options-object identity: callers that construct options inline per request
+ * — the natural style — would otherwise get a fresh limiter every call whose
+ * hit counts never accumulate, silently disabling rate limiting entirely.
+ * Identical configs share one process-wide per-IP limiter; distinct configs
+ * get distinct limiters. Pass an explicit `limiter` to scope the quota by
+ * hand.
+ */
+const limiterRegistry = new Map<string, SlidingWindowRateLimiter>();
 
 function resolveLimiter(
   opts: GuardProxyOptions,
 ): SlidingWindowRateLimiter | undefined {
   if (opts.limiter) return opts.limiter;
   if (!opts.rateLimit) return undefined;
-  let limiter = limiterRegistry.get(opts);
+  const key = `${opts.rateLimit.limit}|${opts.rateLimit.windowMs}`;
+  let limiter = limiterRegistry.get(key);
   if (!limiter) {
     limiter = new SlidingWindowRateLimiter(opts.rateLimit);
-    limiterRegistry.set(opts, limiter);
+    limiterRegistry.set(key, limiter);
   }
   return limiter;
 }
