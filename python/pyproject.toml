@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cubiczan-resilience"
-version = "0.1.0"
+version = "0.2.0"
 description = "Battle-tested resilience primitives: retry/backoff, circuit breaker, idempotency, atomic writes, and fail-closed FastAPI helpers."
 readme = "README.md"
 requires-python = ">=3.10"

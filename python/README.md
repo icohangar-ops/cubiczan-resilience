@@ -124,6 +124,20 @@ def secure(_: str = Depends(auth)):
     return {"ok": True}
 ```
 
+## VerificationGate (report scaffold)
+
+The verification block a generated report carries inside itself, so unverified
+output cannot look decision-ready. Extracted from the drifted trio
+(`earnings-call-nlp-lab`, `market-sentiment-fedgpt`, `hedge-fund-13f-radar`) —
+the per-violation penalty now lives in exactly one place.
+
+```python
+from cubiczan_resilience.verification_gate import VerificationGate, build_gate
+
+gate = build_gate(violations=[...])   # deterministic: penalty 12/violation, floor 50
+report.verification = gate            # status CLEAR only when violations are empty
+```
+
 ## Development
 
 ```bash

@@ -45,6 +45,14 @@ from .tiered import (
     TierFailure,
     resolve_tiered,
 )
+from .verification_gate import (
+    CLEAR,
+    CONFIDENCE_FLOOR,
+    PENALTY_PER_VIOLATION,
+    REQUIRES_HUMAN_VERIFICATION,
+    VerificationGate,
+    build_gate,
+)
 from .retry import (
     DEFAULT_RETRYABLE_STATUS,
     RetriesExhausted,
@@ -53,7 +61,7 @@ from .retry import (
     resilient,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     "resilient",
@@ -80,5 +88,11 @@ __all__ = [
     "Cached",
     "AllTiersFailed",
     "MISS",
+    "VerificationGate",
+    "build_gate",
+    "CLEAR",
+    "REQUIRES_HUMAN_VERIFICATION",
+    "PENALTY_PER_VIOLATION",
+    "CONFIDENCE_FLOOR",
     "__version__",
 ]
