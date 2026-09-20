@@ -50,6 +50,7 @@ from .verification_gate import (
     CONFIDENCE_FLOOR,
     PENALTY_PER_VIOLATION,
     REQUIRES_HUMAN_VERIFICATION,
+    SEVERITY_FLOOR,
     VerificationGate,
     build_gate,
 )
@@ -61,7 +62,7 @@ from .retry import (
     resilient,
 )
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 __all__ = [
     "resilient",
@@ -94,5 +95,6 @@ __all__ = [
     "REQUIRES_HUMAN_VERIFICATION",
     "PENALTY_PER_VIOLATION",
     "CONFIDENCE_FLOOR",
+    "SEVERITY_FLOOR",
     "__version__",
 ]
