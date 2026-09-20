@@ -64,6 +64,11 @@ export class SlidingWindowRateLimiter {
     this.hits.delete(key);
   }
 
+  /** The clock this limiter measures windows against (injected `now` or Date.now). */
+  nowMs(): number {
+    return this.now();
+  }
+
   /** Drop expired entries across all keys to bound memory growth. */
   sweep(): void {
     const cutoff = this.now() - this.windowMs;

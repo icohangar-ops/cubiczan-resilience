@@ -4,6 +4,43 @@ Publish each language package from its subdirectory. Do not publish until you ha
 
 Repository: https://github.com/icohangar-ops/cubiczan-resilience
 
+## Consuming before npm credentials exist — versioned git tag
+
+Until `@cubiczan/resilience` is on a registry, consumers install straight from
+git. A root-level manifest makes the repo root installable; its `prepare`
+script builds `typescript/dist` at install time.
+
+Lifecycle-script behavior differs by consumer — verified empirically:
+
+- **bun**: runs `prepare` for git dependencies, but only when the package is
+  listed under `trustedDependencies` in the consuming project.
+- **npm** (verified on npm 11): SKIPS `prepare` for git dependencies
+  installed from codeload tarballs, so `dist/` is not built during a plain
+  `npm install`. npm consumers need a postinstall build step — see
+  metacomp-visionx-dashboard's `scripts/build-git-dep-resilience.mjs` for a
+  working example.
+
+```bash
+# after tagging (see below)
+npm install github:icohangar-ops/cubiczan-resilience#typescript-v0.2.0
+# or with bun:
+bun add github:icohangar-ops/cubiczan-resilience#typescript-v0.2.0
+```
+
+Tagging a release (from the repo root, after bumping the version in
+`typescript/package.json` — and the root shim's manifest, which must stay in
+lockstep):
+
+```bash
+git tag typescript-v0.2.0 && git push origin typescript-v0.2.0
+```
+
+Bun consumers additionally need, in their own `package.json`:
+
+```json
+{ "trustedDependencies": ["@cubiczan/resilience"] }
+```
+
 ## npm — `@cubiczan/resilience`
 
 ```bash

@@ -17,6 +17,15 @@ npm install @cubiczan/resilience
 npm install zod
 ```
 
+No registry credentials yet? Install straight from git — the repo root is an
+installable shim that builds `dist/` in a `prepare` script (see
+[PUBLISH.md](../PUBLISH.md)):
+
+```bash
+npm install github:icohangar-ops/cubiczan-resilience#typescript-v0.2.0
+# bun: bun add github:icohangar-ops/cubiczan-resilience#typescript-v0.2.0
+```
+
 Requires Node 18+ (global `fetch` / `AbortController`). Targets ES2022, ships
 ESM + `.d.ts`.
 
@@ -27,6 +36,8 @@ ESM + `.d.ts`.
 | `safeFetch(url, opts)` | fetch with per-attempt timeout, retry+backoff+jitter on 429/5xx & network errors, fail-fast on 4xx, optional SSRF allowlist |
 | `requireAuth(req, opts)` | fail-closed bearer check + sliding-window rate limit (generic predicate) |
 | `requireAuthResponse(req, opts)` | Next.js-style helper — returns a `Response` to send, or `null` if authorized |
+| `checkProxyRequest(req, opts)` | fail-closed proxy-route guard — caller-secret header + per-IP rate limit (generic predicate) |
+| `guardProxyRequest(req, opts)` | proxy-guard helper — returns a `Response` to send, or `null` if authorized |
 | `withTimeout(promise, ms)` | bound any promise with a typed timeout |
 | `retry(fn, opts)` | exponential backoff + full jitter, composable |
 | `SlidingWindowRateLimiter` | in-memory sliding-window limiter |
@@ -118,6 +129,59 @@ export async function POST(req: Request) {
   return Response.json({ ok: true });
 }
 ```
+
+---
+
+## `checkProxyRequest` / `guardProxyRequest`
+
+Fail-closed guard for API-proxy routes that front a shared upstream quota: the
+caller must present a secret header, and each client IP is rate-limited under
+a sliding window. If the expected secret is **unset** the request is **refused**
+(503) — it never degrades to open. A missing/mismatched secret is `401`; an
+exhausted rate limit is `429` with a `retry-after` header.
+
+The secret defaults to the `PROXY_API_SECRET` environment variable (read at
+call time); supply `secret` explicitly to override. Framework-agnostic —
+accepts any `Request`, including Next.js `NextRequest`.
+
+```ts
+import { guardProxyRequest, SlidingWindowRateLimiter } from "@cubiczan/resilience";
+
+// One shared limiter for every proxy route in the process:
+const limiter = new SlidingWindowRateLimiter({ limit: 30, windowMs: 60_000 });
+
+export async function POST(req: Request) {
+  const denied = guardProxyRequest(req, { limiter });
+  if (denied) return denied; // 503 misconfigured / 401 unauthorized / 429 limited
+
+  // ...authorized — forward to the upstream API (use safeFetch + allowlist)
+}
+```
+
+The per-IP quota is process-wide and keyed by the `rateLimit` config
+(`limit` + `windowMs`): options objects constructed inline per request share
+one limiter, and distinct configs get distinct limiters. Pass an explicit
+`limiter` to scope the quota by hand. Use `checkProxyRequest` when you need
+the typed outcome (`clientIp`, `retryAfterMs`) instead of a ready-made
+`Response`.
+
+### Deployment topology — `trustedProxyCount`
+
+Client-IP rate limiting trusts reverse proxies, not clients. Reverse proxies
+**append** to `x-forwarded-for`, so a client can inject spoofable leftmost
+entries. The guard selects the hop observed by the **outermost trusted
+proxy**: `trustedProxyCount` (default 1) entries from the right. Set it to
+your real proxy depth — too low collapses callers into shared buckets
+(conservative), too high lets spoofed entries back in. With `0`, NO
+client-IP header is trusted: without a reverse proxy, hop-list and
+single-value headers (`x-forwarded-*`, `x-real-ip`) alike are ordinary
+client-set fields, so every caller shares the `unknown` bucket.
+**Direct exposure (no reverse proxy): set `trustedProxyCount: 0`** — at
+the default `1`, the sole `x-forwarded-for` entry is fully
+caller-controlled, and a caller holding the proxy secret can rotate it per
+request to land in a fresh rate-limit bucket, silently never tripping the
+limit. To trust a single-value header set by your edge, use
+`trustedProxyCount: 1` with `ipHeaders: ["x-real-ip"]`.
 
 ---
 

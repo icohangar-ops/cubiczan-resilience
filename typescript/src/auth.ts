@@ -93,7 +93,8 @@ export function requireAuth(
         ok: false,
         status: 429,
         reason: "Too Many Requests",
-        retryAfterMs: Math.max(0, result.resetAt - Date.now()),
+        // resetAt is on the limiter's clock — measure against it, not Date.now.
+        retryAfterMs: Math.max(0, result.resetAt - limiter.nowMs()),
       };
     }
   }

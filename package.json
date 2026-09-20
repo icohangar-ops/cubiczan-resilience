@@ -1,0 +1,28 @@
+{
+  "name": "@cubiczan/resilience",
+  "version": "0.2.0",
+  "description": "Git-install shim for @cubiczan/resilience — makes the repo root installable via `npm/bun install github:icohangar-ops/cubiczan-resilience#typescript-vX.Y.Z`. The publishable package (and the real manifest) lives in typescript/; see PUBLISH.md. Keep this version in lockstep with typescript/package.json.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Shyam Desigan <sam@cubiczan.com>",
+  "engines": {
+    "node": ">=18"
+  },
+  "main": "./typescript/dist/index.js",
+  "module": "./typescript/dist/index.js",
+  "types": "./typescript/dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./typescript/dist/index.d.ts",
+      "import": "./typescript/dist/index.js"
+    }
+  },
+  "sideEffects": false,
+  "scripts": {
+    "prepare": "cd typescript && npm install --no-audit --no-fund && npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/icohangar-ops/cubiczan-resilience.git"
+  }
+}
