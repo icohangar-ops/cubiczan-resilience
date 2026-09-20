@@ -72,7 +72,9 @@ describe("checkProxyRequest fail-closed", () => {
 });
 
 describe("checkProxyRequest client IP", () => {
-  it("takes the first x-forwarded-for hop", () => {
+  it("takes the hop observed by the outermost trusted proxy (default 1)", () => {
+    // One trusted proxy appended the client address it saw; any client-
+    // supplied entry sits further left and must be ignored.
     const result = checkProxyRequest(
       reqWith({
         "x-proxy-secret": SECRET,
@@ -81,7 +83,49 @@ describe("checkProxyRequest client IP", () => {
       { secret: SECRET },
     );
     expect(result.ok).toBe(true);
-    if (result.ok) expect(result.clientIp).toBe("203.0.113.7");
+    if (result.ok) expect(result.clientIp).toBe("70.41.3.18");
+  });
+
+  it("ignores spoofed leftmost x-forwarded-for entries", () => {
+    // Attacker sends `X-Forwarded-For: evil`; the trusted proxy appends the
+    // real client address. The chain is [evil, 1.2.3.4] and the observed
+    // hop (rightmost) wins.
+    const result = checkProxyRequest(
+      reqWith({
+        "x-proxy-secret": SECRET,
+        "x-forwarded-for": "evil.example, 1.2.3.4",
+      }),
+      { secret: SECRET },
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.clientIp).toBe("1.2.3.4");
+  });
+
+  it("respects trustedProxyCount for multi-proxy chains", () => {
+    // client -> proxyA -> proxyB -> service: proxyB appended proxyA's address
+    // and proxyA appended the client's real address, so trusting both
+    // proxies (2) selects the entry proxyA observed.
+    const result = checkProxyRequest(
+      reqWith({
+        "x-proxy-secret": SECRET,
+        "x-forwarded-for": "evil.example, 1.2.3.4, 10.0.0.254",
+      }),
+      { secret: SECRET, trustedProxyCount: 2 },
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.clientIp).toBe("1.2.3.4");
+  });
+
+  it("never trusts x-forwarded-for when trustedProxyCount is 0", () => {
+    const result = checkProxyRequest(
+      reqWith({
+        "x-proxy-secret": SECRET,
+        "x-forwarded-for": "1.2.3.4",
+      }),
+      { secret: SECRET, trustedProxyCount: 0 },
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.clientIp).toBe("unknown");
   });
 
   it("falls back to x-real-ip", () => {

@@ -41,9 +41,20 @@ export interface GuardProxyOptions {
   readonly limiter?: SlidingWindowRateLimiter;
   /**
    * Headers to derive the client IP from, in priority order. Defaults to
-   * `x-forwarded-for` (first hop) then `x-real-ip`.
+   * `x-forwarded-for` (hop list) then `x-real-ip`.
    */
   readonly ipHeaders?: readonly string[];
+  /**
+   * Number of trusted reverse proxies between the internet and this process.
+   * Default 1. For hop-list headers (`x-forwarded-for`), each trusted proxy
+   * APPENDS the address it saw, so the address observed by the outermost
+   * trusted proxy sits `trustedProxyCount` hops from the right; client- or
+   * attacker-supplied entries further left are never selected. Set this to
+   * your real proxy depth: too low collapses callers into shared buckets
+   * (conservative), too high lets spoofed entries back in. With 0, hop-list
+   * headers are never trusted and every caller shares the "unknown" bucket.
+   */
+  readonly trustedProxyCount?: number;
 }
 
 const DEFAULT_SECRET_HEADER = "x-proxy-secret";
@@ -71,14 +82,25 @@ function defaultSecret(): string | undefined {
   return process.env?.PROXY_API_SECRET;
 }
 
-function clientIp(req: Request, ipHeaders: readonly string[]): string {
+function clientIp(
+  req: Request,
+  ipHeaders: readonly string[],
+  trustedProxyCount: number,
+): string {
   for (const header of ipHeaders) {
     const value = req.headers.get(header);
     if (!value) continue;
-    // x-forwarded-for is a comma-separated hop list; the first entry is the
-    // originating client as seen by the outermost proxy we trust.
-    const first = value.split(",")[0]?.trim();
-    if (first) return first;
+    if (trustedProxyCount <= 0) break; // hop headers are attacker-controlled
+    const hops = value
+      .split(",")
+      .map((hop) => hop.trim())
+      .filter(Boolean);
+    // The client address is the hop observed by the outermost trusted
+    // proxy: the rightmost `trustedProxyCount` entries' provenance belongs
+    // to the trusted proxies, so hops.length - trustedProxyCount is what
+    // the outermost one saw. Spoofed entries sit further left and lose.
+    const client = hops[hops.length - trustedProxyCount];
+    if (client) return client;
   }
   return "unknown";
 }
@@ -117,8 +139,13 @@ export function checkProxyRequest(
   }
 
   const limiter = resolveLimiter(options);
+  const trustedProxyCount = options.trustedProxyCount ?? 1;
   if (limiter) {
-    const ip = clientIp(req, options.ipHeaders ?? DEFAULT_IP_HEADERS);
+    const ip = clientIp(
+      req,
+      options.ipHeaders ?? DEFAULT_IP_HEADERS,
+      trustedProxyCount,
+    );
     const result = limiter.check(ip);
     if (!result.allowed) {
       return {
@@ -132,7 +159,14 @@ export function checkProxyRequest(
     return { ok: true, clientIp: ip };
   }
 
-  return { ok: true, clientIp: clientIp(req, options.ipHeaders ?? DEFAULT_IP_HEADERS) };
+  return {
+    ok: true,
+    clientIp: clientIp(
+      req,
+      options.ipHeaders ?? DEFAULT_IP_HEADERS,
+      trustedProxyCount,
+    ),
+  };
 }
 
 /**

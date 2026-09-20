@@ -36,6 +36,8 @@ ESM + `.d.ts`.
 | `safeFetch(url, opts)` | fetch with per-attempt timeout, retry+backoff+jitter on 429/5xx & network errors, fail-fast on 4xx, optional SSRF allowlist |
 | `requireAuth(req, opts)` | fail-closed bearer check + sliding-window rate limit (generic predicate) |
 | `requireAuthResponse(req, opts)` | Next.js-style helper — returns a `Response` to send, or `null` if authorized |
+| `checkProxyRequest(req, opts)` | fail-closed proxy-route guard — caller-secret header + per-IP rate limit (generic predicate) |
+| `guardProxyRequest(req, opts)` | proxy-guard helper — returns a `Response` to send, or `null` if authorized |
 | `withTimeout(promise, ms)` | bound any promise with a typed timeout |
 | `retry(fn, opts)` | exponential backoff + full jitter, composable |
 | `SlidingWindowRateLimiter` | in-memory sliding-window limiter |
