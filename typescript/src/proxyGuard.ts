@@ -42,24 +42,30 @@ export interface GuardProxyOptions {
   readonly limiter?: SlidingWindowRateLimiter;
   /**
    * Headers to derive the client IP from, in priority order. Defaults to
-   * `x-forwarded-for` (hop list) then `x-real-ip`.
+   * `x-forwarded-for` (hop list) then `x-real-ip`. Headers matching
+   * `x-forwarded-*` are treated as hop lists; every other header is a
+   * single proxy-observed value.
    */
   readonly ipHeaders?: readonly string[];
   /**
    * Number of trusted reverse proxies between the internet and this process.
-   * Default 1. For hop-list headers (`x-forwarded-for`), each trusted proxy
+   * Default 1. For hop-list headers (`x-forwarded-*`), each trusted proxy
    * APPENDS the address it saw, so the address observed by the outermost
    * trusted proxy sits `trustedProxyCount` hops from the right; client- or
    * attacker-supplied entries further left are never selected. Set this to
    * your real proxy depth: too low collapses callers into shared buckets
    * (conservative), too high lets spoofed entries back in. With 0, hop-list
-   * headers are never trusted and every caller shares the "unknown" bucket.
+   * headers are never trusted and callers without another IP header share
+   * the "unknown" bucket; single-value headers (e.g. `x-real-ip`) still
+   * resolve — they carry no client-injectable entries.
    */
   readonly trustedProxyCount?: number;
 }
 
 const DEFAULT_SECRET_HEADER = "x-proxy-secret";
 const DEFAULT_IP_HEADERS = ["x-forwarded-for", "x-real-ip"] as const;
+/** Hop-list headers follow append semantics; anything else is single-value. */
+const HOP_LIST_HEADER = /^x-forwarded-/i;
 
 const limiterRegistry = new WeakMap<object, SlidingWindowRateLimiter>();
 
@@ -99,16 +105,24 @@ function clientIp(
   for (const header of ipHeaders) {
     const value = req.headers.get(header);
     if (!value) continue;
-    if (trustedProxyCount <= 0) break; // hop headers are attacker-controlled
+    // `x-forwarded-*` are hop lists: each proxy APPENDS the address it saw,
+    // so clients can prepend spoofable entries. Other headers (e.g.
+    // `x-real-ip`) hold a single proxy-observed value — never a client-
+    // injectable list — so they stay trustworthy regardless of the count.
+    const isHopList = HOP_LIST_HEADER.test(header);
+    if (isHopList && trustedProxyCount <= 0) continue;
     const hops = value
       .split(",")
       .map((hop) => hop.trim())
       .filter(Boolean);
-    // The client address is the hop observed by the outermost trusted
-    // proxy: the rightmost `trustedProxyCount` entries' provenance belongs
-    // to the trusted proxies, so hops.length - trustedProxyCount is what
-    // the outermost one saw. Spoofed entries sit further left and lose.
-    const client = hops[hops.length - trustedProxyCount];
+    // Hop lists: the client address is the hop observed by the outermost
+    // trusted proxy — the rightmost `trustedProxyCount` entries were
+    // appended by trusted proxies, so hops.length - trustedProxyCount is
+    // what the outermost one saw. Spoofed entries sit further left and
+    // lose. Single-value headers: the value itself.
+    const client = isHopList
+      ? hops[hops.length - trustedProxyCount]
+      : hops[hops.length - 1];
     if (client) return client;
   }
   return "unknown";

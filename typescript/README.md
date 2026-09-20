@@ -163,6 +163,18 @@ routes so the per-IP quota is process-wide; distinct options objects get
 distinct limiters. Use `checkProxyRequest` when you need the typed outcome
 (`clientIp`, `retryAfterMs`) instead of a ready-made `Response`.
 
+### Deployment topology — `trustedProxyCount`
+
+Client-IP rate limiting trusts reverse proxies, not clients. Reverse proxies
+**append** to `x-forwarded-for`, so a client can inject spoofable leftmost
+entries. The guard selects the hop observed by the **outermost trusted
+proxy**: `trustedProxyCount` (default 1) entries from the right. Set it to
+your real proxy depth — too low collapses callers into shared buckets
+(conservative), too high lets spoofed entries back in. With `0`, hop-list
+headers (`x-forwarded-*`) are never trusted; single-value headers (e.g.
+`x-real-ip`) still resolve, so callers without one share the `unknown`
+bucket.
+
 ---
 
 ## `withTimeout` & `retry` (composable primitives)

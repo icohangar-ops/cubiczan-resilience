@@ -137,6 +137,28 @@ describe("checkProxyRequest client IP", () => {
     if (result.ok) expect(result.clientIp).toBe("unknown");
   });
 
+  it("still resolves x-real-ip when trustedProxyCount is 0 (non-hop-list header)", () => {
+    const result = checkProxyRequest(
+      reqWith({ "x-proxy-secret": SECRET, "x-real-ip": "198.51.100.9" }),
+      { secret: SECRET, trustedProxyCount: 0 },
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.clientIp).toBe("198.51.100.9");
+  });
+
+  it("skips a spoofed x-forwarded-for and falls through to x-real-ip at count 0", () => {
+    const result = checkProxyRequest(
+      reqWith({
+        "x-proxy-secret": SECRET,
+        "x-forwarded-for": "6.6.6.6",
+        "x-real-ip": "198.51.100.9",
+      }),
+      { secret: SECRET, trustedProxyCount: 0 },
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.clientIp).toBe("198.51.100.9");
+  });
+
   it("falls back to x-real-ip", () => {
     const result = checkProxyRequest(
       reqWith({ "x-proxy-secret": SECRET, "x-real-ip": "198.51.100.9" }),
